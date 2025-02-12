@@ -41,40 +41,54 @@ import (
 	"time"
 )
 
+type Tool struct {
+	deviceIdXinput             string
+	buttonIdHoldTriggersScroll string
+	evtestDevicePath           string
+}
+
 func main() {
 	deviceIdXinput := "24"            // xinput device id. Find yours with `xinput list`
 	buttonIdHoldTriggersScroll := "3" // xinput button id to hold for drag scroll
 	deviceIdEvtest := "27"            // evtest device id. Find yours with `sudo evtest`
 
-	evtestDevicePath := "/dev/input/event" + deviceIdEvtest
+	t := Tool{
+		deviceIdXinput:             deviceIdXinput,
+		buttonIdHoldTriggersScroll: buttonIdHoldTriggersScroll,
+		evtestDevicePath:           "/dev/input/event" + deviceIdEvtest,
+	}
+	t.Start()
+}
+
+func (o *Tool) Start() {
 	for {
-		waitForDevice(evtestDevicePath, deviceIdXinput)
-		enableDragScrollWhileHoldingButton(deviceIdXinput, buttonIdHoldTriggersScroll)
-		handleNaturalScrollingState(evtestDevicePath, deviceIdXinput)
+		o.waitForDevice()
+		o.enableDragScrollWhileHoldingButton()
+		o.handleNaturalScrollingState()
 		time.Sleep(3 * time.Second)
 	}
 }
 
-func enableDragScrollWhileHoldingButton(deviceIdXinput, buttonIdHoldTriggersScroll string) {
-	runCliOrDie(exec.Command("xinput", "set-prop", deviceIdXinput, "libinput Button Scrolling Button", buttonIdHoldTriggersScroll))
-	runCliOrDie(exec.Command("xinput", "set-prop", deviceIdXinput, "libinput Scroll Method Enabled", "0", "0", "1"))
+func (o *Tool) enableDragScrollWhileHoldingButton() {
+	o.runCliOrDie(exec.Command("xinput", "set-prop", o.deviceIdXinput, "libinput Button Scrolling Button", o.buttonIdHoldTriggersScroll))
+	o.runCliOrDie(exec.Command("xinput", "set-prop", o.deviceIdXinput, "libinput Scroll Method Enabled", "0", "0", "1"))
 }
 
-func waitForDevice(evtestDevicePath, deviceIdXinput string) {
+func (o *Tool) waitForDevice() {
 	i := 0
 	for {
-		_, err := os.Stat(evtestDevicePath)
+		_, err := os.Stat(o.evtestDevicePath)
 		if err == nil {
-			fmt.Printf("evtest device %s is available.\n", evtestDevicePath)
+			fmt.Printf("evtest device %s is available.\n", o.evtestDevicePath)
 
 			for {
 				if math.Mod(float64(i), 10) == 0 {
 					fmt.Printf("Waiting for xinput device.\n")
 				}
 
-				xinputReady := isXinputDeviceAvailable(deviceIdXinput)
+				xinputReady := o.isXinputDeviceAvailable()
 				if xinputReady {
-					fmt.Printf("xinput device %s is available.\n", deviceIdXinput)
+					fmt.Printf("xinput device %s is available.\n", o.deviceIdXinput)
 					break
 				}
 				time.Sleep(1 * time.Second)
@@ -85,14 +99,14 @@ func waitForDevice(evtestDevicePath, deviceIdXinput string) {
 		}
 
 		if math.Mod(float64(i), 10) == 0 {
-			fmt.Printf("Device %s is not available yet. Waiting...\n", evtestDevicePath)
+			fmt.Printf("Device %s is not available yet. Waiting...\n", o.evtestDevicePath)
 		}
 		time.Sleep(1 * time.Second)
 		i++
 	}
 }
 
-func isXinputDeviceAvailable(deviceIdXinput string) bool {
+func (o *Tool) isXinputDeviceAvailable() bool {
 	cmd := exec.Command("xinput", "list")
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -104,11 +118,11 @@ func isXinputDeviceAvailable(deviceIdXinput string) bool {
 	}
 
 	output := out.String()
-	return strings.Contains(output, "id="+deviceIdXinput)
+	return strings.Contains(output, "id="+o.deviceIdXinput)
 }
 
-func openEvtestDevice(evtestDevicePath string) *evdev.InputDevice {
-	device, err := evdev.Open(evtestDevicePath)
+func (o *Tool) openEvtestDevice() *evdev.InputDevice {
+	device, err := evdev.Open(o.evtestDevicePath)
 	if err != nil {
 		fmt.Println("Error opening evdev device:", err)
 		return nil
@@ -116,8 +130,8 @@ func openEvtestDevice(evtestDevicePath string) *evdev.InputDevice {
 	return device
 }
 
-func handleNaturalScrollingState(evtestDevicePath, deviceIdXinput string) {
-	device := openEvtestDevice(evtestDevicePath)
+func (o *Tool) handleNaturalScrollingState() {
+	device := o.openEvtestDevice()
 	if device == nil {
 		fmt.Println(fmt.Sprintf("Error opening evdev device."))
 		return
@@ -151,9 +165,9 @@ func handleNaturalScrollingState(evtestDevicePath, deviceIdXinput string) {
 
 					if curRightButtonPressedState != prevRightButtonPressedState {
 						if curRightButtonPressedState > 0 {
-							setNaturalScroll(deviceIdXinput, true)
+							o.setNaturalScroll(true)
 						} else {
-							setNaturalScroll(deviceIdXinput, false)
+							o.setNaturalScroll(false)
 						}
 						prevRightButtonPressedState = curRightButtonPressedState
 					}
@@ -163,15 +177,15 @@ func handleNaturalScrollingState(evtestDevicePath, deviceIdXinput string) {
 	}
 }
 
-func setNaturalScroll(deviceIdXinput string, enable bool) {
+func (o *Tool) setNaturalScroll(enable bool) {
 	value := "0"
 	if enable {
 		value = "1"
 	}
-	runCliOrDie(exec.Command("xinput", "set-prop", deviceIdXinput, "libinput Natural Scrolling Enabled", value))
+	o.runCliOrDie(exec.Command("xinput", "set-prop", o.deviceIdXinput, "libinput Natural Scrolling Enabled", value))
 }
 
-func runCliOrDie(cmd *exec.Cmd) {
+func (o *Tool) runCliOrDie(cmd *exec.Cmd) {
 	err := cmd.Run()
 	if err != nil {
 		fmt.Println("Error executing command:", err)
